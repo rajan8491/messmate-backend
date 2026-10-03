@@ -4,6 +4,9 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.example.messmate.entity.keys.MenuExtraId;
+import org.hibernate.annotations.CreationTimestamp;
+
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -28,4 +31,10 @@ public class MenuExtra {
             nullable = false
     )
     private Boolean active = true;
+
+    @CreationTimestamp
+    @Column(
+            name = "created_at"
+    )
+    private LocalDateTime createdAt;
 }

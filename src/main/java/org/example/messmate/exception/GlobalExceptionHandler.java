@@ -1,6 +1,7 @@
 package org.example.messmate.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.apache.coyote.BadRequestException;
 import org.example.messmate.dto.ApiExceptionDto;
 import org.example.messmate.dto.ValidationExceptionDto;
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,43 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ApiExceptionDto> handleBadRequestException(
+            BadRequestException ex,
+            HttpServletRequest request
+    ) {
+        ApiExceptionDto apiExceptionDto =
+                new ApiExceptionDto(
+                        HttpStatus.BAD_REQUEST.value(),
+                        HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                        ex.getMessage(),
+                        request.getRequestURI()
+                );
+
+        return new ResponseEntity<>(
+                apiExceptionDto,
+                HttpStatus.BAD_REQUEST
+        );
+    }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiExceptionDto> handleResourceNotFoundException(
+            ResourceNotFoundException ex,
+            HttpServletRequest request
+    ) {
+        ApiExceptionDto apiExceptionDto = new ApiExceptionDto(
+                HttpStatus.NOT_FOUND.value(),
+                HttpStatus.NOT_FOUND.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+
+        return new ResponseEntity<>(
+                apiExceptionDto,
+                HttpStatus.NOT_FOUND
+        );
+
+    }
 
     @ExceptionHandler(UserNotFoundException.class)
     public ResponseEntity<ApiExceptionDto> handleNoHandlerFoundException(

@@ -12,7 +12,7 @@ public class StudentMapper {
     public static StudentResponseDto toDto(Student student) {
         StudentResponseDto studentResponseDto = new StudentResponseDto();
 
-        studentResponseDto.setIdentifier(
+        studentResponseDto.setEmail(
                 student.getUser()
                         .getUsername()
         );
@@ -24,6 +24,10 @@ public class StudentMapper {
         studentResponseDto.setHostelId(
                 student.getHostel()
                         .getId()
+        );
+
+        studentResponseDto.setHostelName(
+                student.getHostel().getName()
         );
 
         return studentResponseDto;

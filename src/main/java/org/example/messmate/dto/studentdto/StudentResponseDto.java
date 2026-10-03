@@ -11,7 +11,8 @@ import lombok.Setter;
 @NoArgsConstructor
 public class StudentResponseDto {
     private String name;
-    private String identifier;
+    private String email;
     private String rollNumber;
     private Long hostelId;
+    private String hostelName;
 }

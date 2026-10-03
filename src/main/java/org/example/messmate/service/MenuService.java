@@ -52,12 +52,6 @@ public class MenuService {
                         day
                 );
 
-        if (menuPlans.isEmpty()) {
-            throw new ResourceNotFoundException(
-                    "No menu found for this hostel and day"
-            );
-        }
-
         List<Long> menuPlanIds =
                 menuPlans.stream()
                         .map(HostelMenuPlan::getId)
@@ -73,6 +67,7 @@ public class MenuService {
 
         // now map the mess_slot to menu_response
         return MenuMapper.toMenuResponseDto(
+                day,
                 menuPlans,
                 diets,
                 extras
@@ -92,7 +87,7 @@ public class MenuService {
             Long hostelId,
             String day
     ) {
-        DayOfWeek dayOfWeek = DayOfWeek.valueOf(day);
+        DayOfWeek dayOfWeek = DayOfWeek.valueOf(day.toUpperCase());
         return getMenuByHostelAndDay(
                 hostelId,
                 dayOfWeek
@@ -104,12 +99,6 @@ public class MenuService {
     ) {
         List<HostelMenuPlan> menuPlans =
                 hostelMenuPlanRepository.findSlotsByHostel(hostelId);
-
-        if (menuPlans.isEmpty()) {
-            throw new ResourceNotFoundException(
-                    "No menu found for this hostel and day"
-            );
-        }
 
         List<Long> menuPlanIds =
                 menuPlans.stream()
@@ -250,8 +239,8 @@ public class MenuService {
                 plansToPersist.add(plan);
             }
         }
-
         existingPlans.addAll(plansToPersist);
+        hostelMenuPlanRepository.saveAll(plansToPersist);
 
     }
 
@@ -471,5 +460,39 @@ public class MenuService {
 
         // 5. Persist all updated plans and junction relations
         hostelMenuPlanRepository.saveAll(plansToPersist);
+    }
+
+    public List<ExtraItemDto> getExtraItemByDate(
+            LocalDate date,
+            String meal,
+            Long hostelId
+    ) {
+        MealType mealType = MealType.valueOf(meal.toUpperCase());
+        // 1. find dayOfWeek using date
+        DayOfWeek dayOfWeek = date.getDayOfWeek();
+        // 2. find slot and menu plan
+        Optional<MessSlot> messSlot =
+                messSlotRepository.findByDayOfWeekAndMealType(dayOfWeek, mealType);
+
+        if(messSlot.isEmpty()){
+            throw new ResourceNotFoundException("MessSlot not found");
+        }
+
+        Optional<HostelMenuPlan> menuPlan =
+                hostelMenuPlanRepository.findByHostelIdAndMessSlotId(hostelId, messSlot.get().getId());
+
+        if(menuPlan.isEmpty()){
+            throw new ResourceNotFoundException("HostelMenuPlan not found");
+        }
+
+
+        // 3. find menu_diet whose creation date is just smaller than date
+        List<MenuExtra> menuExtras =
+                menuExtraRepository.findExtras(menuPlan.get().getId());
+
+        return menuExtras.stream()
+                        .map(MenuExtra::getExtraItem)
+                        .map(MenuMapper::toExtraDto)
+                        .toList();
     }
 }

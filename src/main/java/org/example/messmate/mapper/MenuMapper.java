@@ -21,16 +21,18 @@ public class MenuMapper {
     }
 
     public static MenuResponseDto toMenuResponseDto(
+            DayOfWeek dayOfWeek,
             List<HostelMenuPlan> menuPlans,
             Set<MenuDiet> diets,
             Set<MenuExtra> extras
     ) {
         // 1. Group items by menuPlanId
-        Map<Long, List<DietItemDto>> dietsByPlanId = diets.stream()
-                .collect(Collectors.groupingBy(
-                        d -> d.getMenuPlan().getId(),
-                        Collectors.mapping(d -> toDietDto(d.getDietItem()), Collectors.toList())
-                ));
+        Map<Long, List<DietItemDto>> dietsByPlanId =
+                diets.stream()
+                        .collect(Collectors.groupingBy(
+                                d -> d.getMenuPlan().getId(),
+                                Collectors.mapping(d -> toDietDto(d.getDietItem()), Collectors.toList())
+                        ));
 
         Map<Long, List<ExtraItemDto>> extrasByPlanId = extras.stream()
                 .collect(Collectors.groupingBy(
@@ -40,7 +42,7 @@ public class MenuMapper {
 
         // 2. Build single day DTO
         MenuResponseDto dto = new MenuResponseDto();
-        dto.setWeekDay(menuPlans.getFirst().getMessSlot().getDayOfWeek());
+        dto.setWeekDay(dayOfWeek);
         dto.setMenu(
                 toMenuDto(
                         menuPlans,
@@ -85,7 +87,7 @@ public class MenuMapper {
                 ));
 
         // 4. Build MenuResponseDto per day
-        List<MenuResponseDto> weeklyMenuDtos = new ArrayList<>();
+        List<MenuResponseDto> weeklyMenuDto = new ArrayList<>();
 
         for (Map.Entry<DayOfWeek, List<HostelMenuPlan>> entry : plansByDay.entrySet()) {
             DayOfWeek day = entry.getKey();
@@ -101,10 +103,10 @@ public class MenuMapper {
                     )
             );
 
-            weeklyMenuDtos.add(dayDto);
+            weeklyMenuDto.add(dayDto);
         }
 
-        return weeklyMenuDtos;
+        return weeklyMenuDto;
     }
 
     private static List<MenuDto> toMenuDto(

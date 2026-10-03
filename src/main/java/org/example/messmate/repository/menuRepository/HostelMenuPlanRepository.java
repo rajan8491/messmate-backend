@@ -8,8 +8,11 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.DayOfWeek;
 import java.util.List;
+import java.util.Optional;
 
 public interface HostelMenuPlanRepository extends JpaRepository<HostelMenuPlan, Long> {
+    Optional<HostelMenuPlan> findByHostelIdAndMessSlotId(Long hostelId, Long messSlotId);
+
     @Query("""
         SELECT DISTINCT s FROM HostelMenuPlan s
         JOIN FETCH s.messSlot ms

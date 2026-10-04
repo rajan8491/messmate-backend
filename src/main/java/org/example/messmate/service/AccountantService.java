@@ -2,7 +2,6 @@ package org.example.messmate.service;
 
 import org.example.messmate.dto.AccountantDto;
 import org.example.messmate.entity.Accountant;
-import org.example.messmate.entity.Hostel;
 import org.example.messmate.entity.User;
 import org.example.messmate.exception.UserNotFoundException;
 import org.example.messmate.repository.AccountantRepository;

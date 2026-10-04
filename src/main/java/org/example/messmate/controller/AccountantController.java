@@ -141,9 +141,7 @@ public class AccountantController {
         }
         String username = jwt.getSubject();
 
-        System.out.println("username = " + username + " -> fresh = " + fresh);
-
-        // analyse feedback
+        // TODO: analyse feedback
 
         return ResponseEntity.ok().body("analysis generated");
     }

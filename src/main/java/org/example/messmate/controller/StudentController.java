@@ -2,6 +2,7 @@ package org.example.messmate.controller;
 
 import jakarta.validation.Valid;
 import org.apache.coyote.BadRequestException;
+import org.example.messmate.dto.AddRatingRequest;
 import org.example.messmate.dto.ExtraPurchaseDto;
 import org.example.messmate.dto.SuccessMessageDto;
 import org.example.messmate.dto.extraAnalysisDto.ExtraAnalysisResponse;
@@ -12,6 +13,7 @@ import org.example.messmate.entity.Student;
 import org.example.messmate.exception.UserUnauthorizedException;
 import org.example.messmate.service.MenuService;
 import org.example.messmate.service.StudentService;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -36,11 +38,7 @@ public class StudentController {
 
     @GetMapping("/profile")
     public ResponseEntity<StudentResponseDto> getStudent(@AuthenticationPrincipal Jwt jwt) {
-        if(jwt == null) {
-            throw new UserUnauthorizedException();
-        }
-
-        String username = jwt.getSubject();
+        String username = getUsername(jwt);
 
         StudentResponseDto studentResponseDto =
                 studentService.getStudentProfile(username);
@@ -50,10 +48,7 @@ public class StudentController {
 
     @GetMapping("/menu/today")
     public ResponseEntity<MenuResponseDto> getTodayMenu(@AuthenticationPrincipal Jwt jwt) {
-        if(jwt == null) {
-            throw new UserUnauthorizedException();
-        }
-        String username = jwt.getSubject();
+        String username = getUsername(jwt);
 
         StudentResponseDto studentResponseDto = studentService.getStudentProfile(username);
 
@@ -68,10 +63,7 @@ public class StudentController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable String day
     ) {
-        if(jwt == null) {
-            throw new UserUnauthorizedException();
-        }
-        String username = jwt.getSubject();
+        String username = getUsername(jwt);
 
         StudentResponseDto studentResponseDto = studentService.getStudentProfile(username);
 
@@ -94,10 +86,7 @@ public class StudentController {
             throw new BadRequestException("meal is null");
         }
 
-        if(jwt == null) {
-            throw new UserUnauthorizedException();
-        }
-        String username = jwt.getSubject();
+        String username = getUsername(jwt);
 
         StudentResponseDto studentResponseDto = studentService.getStudentProfile(username);
 
@@ -105,6 +94,13 @@ public class StudentController {
                 menuService.getExtraItemByDate(date, meal, studentResponseDto.getHostelId());
 
         return ResponseEntity.ok(extraItemDto);
+    }
+
+    private static @Nullable String getUsername(Jwt jwt) {
+        if(jwt == null) {
+            throw new UserUnauthorizedException();
+        }
+        return jwt.getSubject();
     }
 
     @PostMapping("/purchase-extra")
@@ -116,11 +112,7 @@ public class StudentController {
             throw new BadRequestException("Some field is missing");
         }
 
-        if(jwt == null) {
-            throw new UserUnauthorizedException();
-        }
-
-        String username = jwt.getSubject();
+        String username = getUsername(jwt);
         studentService.addStudentExtra(extraPurchaseDto, username);
 
         SuccessMessageDto dto = new SuccessMessageDto("Extra item is added successfully");
@@ -136,11 +128,7 @@ public class StudentController {
             @AuthenticationPrincipal Jwt jwt
     ) {
 
-        if(jwt == null) {
-            throw new UserUnauthorizedException();
-        }
-
-        String username = jwt.getSubject();
+        String username = getUsername(jwt);
 
         ExtraAnalysisResponse extraAnalysisResponse =
                 studentService.analyseExtraPurchase(
@@ -153,10 +141,31 @@ public class StudentController {
         return ResponseEntity.ok(extraAnalysisResponse);
     }
 
+    @PostMapping("/ratings")
+    public ResponseEntity<Void> addRating(
+            @Valid @RequestBody AddRatingRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ) throws BadRequestException {
+        String username = getUsername(jwt);
+
+        studentService.addRating(
+                username,
+                request
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .build();
+    }
+
     @PutMapping("/change-hostel")
-    public ResponseEntity<String> changeHostel(@RequestBody Long hostelId) {
-        Student student = new Student();
-        studentService.changeHostelById(student.getId(), hostelId);
+    public ResponseEntity<String> changeHostel(
+            @RequestBody Long hostelId,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        String username = getUsername(jwt);
+
+        studentService.changeHostel(username, hostelId);
 
         return ResponseEntity.ok().body("Hostel has been changed successfully");
     }

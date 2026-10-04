@@ -6,7 +6,6 @@ import org.example.messmate.dto.hostelDto.HostelUpdateDto;
 import org.example.messmate.dto.otpDto.OtpSendRequestDto;
 import org.example.messmate.dto.otpDto.OtpSendResponseDto;
 import org.example.messmate.dto.otpDto.OtpVerifyRequestDto;
-import org.example.messmate.dto.studentdto.StudentResponseDto;
 import org.example.messmate.entity.Accountant;
 import org.example.messmate.entity.Hostel;
 import org.example.messmate.entity.User;
@@ -26,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 @Service
 public class HostelService {

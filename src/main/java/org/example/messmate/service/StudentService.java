@@ -1,6 +1,8 @@
 package org.example.messmate.service;
 
 import jakarta.validation.Valid;
+import org.apache.coyote.BadRequestException;
+import org.example.messmate.dto.AddRatingRequest;
 import org.example.messmate.dto.ExtraPurchaseInfo;
 import org.example.messmate.dto.ExtraPurchaseDto;
 import org.example.messmate.dto.extraAnalysisDto.*;
@@ -14,10 +16,7 @@ import org.example.messmate.enums.OtpPurpose;
 import org.example.messmate.exception.ResourceNotFoundException;
 import org.example.messmate.exception.UserNotFoundException;
 import org.example.messmate.mapper.StudentMapper;
-import org.example.messmate.repository.HostelRepository;
-import org.example.messmate.repository.StudentExtraRepository;
-import org.example.messmate.repository.StudentRepository;
-import org.example.messmate.repository.UserRepository;
+import org.example.messmate.repository.*;
 import org.example.messmate.repository.menuRepository.ExtraItemRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,17 +38,24 @@ public class StudentService {
     private final UserRepository userRepository;
     private final StudentExtraRepository studentExtraRepository;
     private final ExtraItemRepository extraItemRepository;
+    private final RatingService ratingService;
 
     public StudentService(
             StudentRepository studentRepository,
             HostelRepository hostelRepository,
-            OtpService otpService, UserRepository userRepository, StudentExtraRepository studentExtraRepository, ExtraItemRepository extraItemRepository) {
+            OtpService otpService,
+            UserRepository userRepository,
+            StudentExtraRepository studentExtraRepository,
+            ExtraItemRepository extraItemRepository,
+            RatingService ratingService
+    ) {
         this.studentRepository = studentRepository;
         this.hostelRepository = hostelRepository;
         this.otpService = otpService;
         this.userRepository = userRepository;
         this.studentExtraRepository = studentExtraRepository;
         this.extraItemRepository = extraItemRepository;
+        this.ratingService = ratingService;
     }
 
     public StudentResponseDto getStudentProfile(String username) {
@@ -305,8 +311,28 @@ public class StudentService {
         };
     }
 
-    public void changeHostelById(Long studentId, Long hostelId) {
-        Student student = studentRepository.findById(studentId).orElse(null);
+    public void addRating(
+            String username,
+            AddRatingRequest ratingDto
+    ) throws BadRequestException {
+        User user =
+                userRepository
+                        .findByUsername(username)
+                        .orElseThrow(UserNotFoundException::new);
+
+        Student student = user.getStudent();
+
+        ratingService.rateItem(student, ratingDto);
+    }
+
+
+
+    public void changeHostel(String username, Long hostelId) {
+        User user = userRepository
+                .findByUsername(username)
+                .orElseThrow(UserNotFoundException::new);
+
+        Student student = user.getStudent();
 
         if(student == null) throw new UserNotFoundException("Student not found");
 

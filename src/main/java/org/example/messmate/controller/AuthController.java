@@ -308,7 +308,6 @@ public class AuthController {
                     required = false
             ) String rawRefreshToken
     ){
-        System.out.println(rawRefreshToken);
         if(rawRefreshToken == null || rawRefreshToken.isEmpty()){
             throw new UserUnauthorizedException();
         }

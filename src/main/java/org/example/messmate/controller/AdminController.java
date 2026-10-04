@@ -10,7 +10,6 @@ import org.example.messmate.dto.otpDto.OtpVerifyRequestDto;
 import org.example.messmate.dto.studentdto.RemoveStudentVerifyRequestDto;
 import org.example.messmate.dto.studentdto.StudentResponseDto;
 import org.example.messmate.service.HostelService;
-import org.example.messmate.service.OtpService;
 import org.example.messmate.service.StudentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

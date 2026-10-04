@@ -1,6 +1,5 @@
 package org.example.messmate.service;
 
-import jakarta.validation.Valid;
 import org.example.messmate.dto.menudto.*;
 import org.example.messmate.entity.*;
 import org.example.messmate.enums.MealType;
@@ -131,20 +130,7 @@ public class MenuService {
 
         for (WeeklyMenuUpdateDto dayDto : weeklyMenuUpdateDto) {
             if (dayDto.getMenu() == null) continue;
-            for (MenuDto menu : dayDto.getMenu()) {
-                if (menu.getDiet() != null) {
-                    menu.getDiet().stream()
-                            .map(DietItemDto::getId)
-                            .filter(Objects::nonNull)
-                            .forEach(incomingDietIds::add);
-                }
-                if (menu.getExtra() != null) {
-                    menu.getExtra().stream()
-                            .map(ExtraItemDto::getId)
-                            .filter(Objects::nonNull)
-                            .forEach(incomingExtraIds::add);
-                }
-            }
+            extractItemId(incomingDietIds, incomingExtraIds, dayDto.getMenu());
         }
 
         // 2. Fetch master catalog items in batch
@@ -242,6 +228,23 @@ public class MenuService {
         existingPlans.addAll(plansToPersist);
         hostelMenuPlanRepository.saveAll(plansToPersist);
 
+    }
+
+    private void extractItemId(Set<Long> incomingDietIds, Set<Long> incomingExtraIds, List<MenuDto> menu2) {
+        for (MenuDto menu : menu2) {
+            if (menu.getDiet() != null) {
+                menu.getDiet().stream()
+                        .map(DietItemDto::getId)
+                        .filter(Objects::nonNull)
+                        .forEach(incomingDietIds::add);
+            }
+            if (menu.getExtra() != null) {
+                menu.getExtra().stream()
+                        .map(ExtraItemDto::getId)
+                        .filter(Objects::nonNull)
+                        .forEach(incomingExtraIds::add);
+            }
+        }
     }
 
     private void reconcileDietItems(
@@ -372,20 +375,7 @@ public class MenuService {
         Set<Long> incomingDietIds = new HashSet<>();
         Set<Long> incomingExtraIds = new HashSet<>();
 
-        for (MenuDto slotDto : updateTodayMenuDto.getMenu()) {
-            if (slotDto.getDiet() != null) {
-                slotDto.getDiet().stream()
-                        .map(DietItemDto::getId)
-                        .filter(Objects::nonNull)
-                        .forEach(incomingDietIds::add);
-            }
-            if (slotDto.getExtra() != null) {
-                slotDto.getExtra().stream()
-                        .map(ExtraItemDto::getId)
-                        .filter(Objects::nonNull)
-                        .forEach(incomingExtraIds::add);
-            }
-        }
+        extractItemId(incomingDietIds, incomingExtraIds, updateTodayMenuDto.getMenu());
 
         // 2. Batch fetch active catalog items (prevents N+1 queries)
         Map<Long, DietItem> activeDietCatalog =

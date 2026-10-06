@@ -1,5 +1,6 @@
 package org.example.messmate.service;
 
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import org.example.messmate.dto.auth.*;
 import org.example.messmate.dto.otpDto.OtpSendRequestDto;
 import org.example.messmate.dto.otpDto.OtpVerifyRequestDto;
@@ -8,7 +9,8 @@ import org.example.messmate.entity.Student;
 import org.example.messmate.entity.User;
 import org.example.messmate.enums.OtpPurpose;
 import org.example.messmate.enums.Role;
-import org.example.messmate.exception.EmailAlreadyExistsException;
+import org.example.messmate.exception.BadRequestException;
+import org.example.messmate.exception.DuplicateResourceException;
 import org.example.messmate.exception.ResourceNotFoundException;
 import org.example.messmate.exception.UserNotFoundException;
 import org.example.messmate.notification.domain.NotificationChannel;
@@ -24,6 +26,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Locale;
+import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class AuthService {
@@ -36,6 +40,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final HostelRepository hostelRepository;
     private final StudentRepository studentRepository;
+    private final GoogleAuthService googleAuthService;
 
     public AuthService(
             AuthenticationManager authenticationManager,
@@ -45,8 +50,8 @@ public class AuthService {
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             HostelRepository hostelRepository,
-            StudentRepository studentRepository
-    ) {
+            StudentRepository studentRepository,
+            GoogleAuthService googleAuthService) {
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
         this.otpService = otpService;
@@ -55,6 +60,7 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.hostelRepository = hostelRepository;
         this.studentRepository = studentRepository;
+        this.googleAuthService = googleAuthService;
     }
 
     public Authentication authenticate(
@@ -82,6 +88,116 @@ public class AuthService {
         return jwtService.generateAccessToken(userDetails);
     }
 
+    /**
+     * Verifies Google token:
+     * - If user exists -> logs in directly.
+     * - If user doesn't exist -> returns isNewUser: true (prompts for Name & Hostel).
+     */
+    @Transactional(readOnly = true)
+    public GoogleVerifyResponseDto verifyGoogleToken(String idTokenString) {
+        GoogleIdToken.Payload payload = googleAuthService.verifyToken(idTokenString);
+        String email = payload.getEmail();
+        // Optional: enforce college domain (@nitkkr.ac.in)
+        if (email == null || !email.endsWith("@nitkkr.ac.in")) {
+            throw new BadRequestException("Please provide college email");
+        }
+        String name = (String) payload.get("name");
+
+        Optional<User> existingUser = userRepository.findByUsernameAndVerifiedIsTrue(email);
+
+        if (existingUser.isPresent()) {
+            User user = existingUser.get();
+            UserDetails userDetails = customUserDetailsService.loadUserByUsername(user.getUsername());
+            String accessToken = jwtService.generateAccessToken(userDetails);
+
+            return GoogleVerifyResponseDto.builder()
+                    .isNewUser(false)
+                    .email(user.getUsername())
+                    .name(name)
+                    .role(user.getRole().name().toLowerCase())
+                    .username(user.getUsername())
+                    .accessToken(accessToken)
+                    .build();
+        }
+
+        return GoogleVerifyResponseDto.builder()
+                .isNewUser(true)
+                .email(email)
+                .name(name != null ? name : "")
+                .build();
+    }
+
+    /**
+     * Completes registration for new Google user by saving Name and Hostel.
+     */
+    @Transactional
+    public AuthResponseDto completeGoogleRegistration(CompleteGoogleProfileDto dto) {
+        GoogleIdToken.Payload payload = googleAuthService.verifyToken(dto.getToken());
+        String email = payload.getEmail();
+
+        if (userRepository.existsByUsername(email)) {
+            throw new DuplicateResourceException("Account already registered. Please log in.");
+        }
+
+        // 1. Create User entity with verified email and dummy secure password
+        User user = new User();
+        user.setUsername(email);
+        user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+        user.setRole(Role.STUDENT);
+        user.setVerified(true); // Pre-verified via Google OAuth
+        User savedUser = userRepository.save(user);
+
+        // 2. Create Student profile entity linked to user and selected hostel
+        Student student = new Student();
+        student.setUser(savedUser);
+        student.setName(dto.getName());
+        student.setRollNumber(dto.getRollNo());
+        Hostel hostel =
+                hostelRepository
+                        .findById(dto.getHostelId())
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException("Hostel")
+                        );
+
+        student.setHostel(hostel);
+
+        studentRepository.save(student);
+
+        // 3. Issue JWT Access Token
+        UserDetails userDetails = customUserDetailsService.loadUserByUsername(email);
+        String accessToken = jwtService.generateAccessToken(userDetails);
+
+        return AuthResponseDto.builder()
+                .accessToken(accessToken)
+                .username(savedUser.getUsername())
+                .role(savedUser.getRole().name().toLowerCase())
+                .message("Profile registered successfully")
+                .build();
+    }
+
+    /**
+     * Strict Login with Google: Throws ResourceNotFoundException if user doesn't exist.
+     */
+    @Transactional(readOnly = true)
+    public AuthResponseDto loginWithGoogleStrict(String idTokenString) {
+        GoogleIdToken.Payload payload = googleAuthService.verifyToken(idTokenString);
+        String email = payload.getEmail();
+
+        User user = userRepository.findByUsername(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Account does not exist. Please sign up first."));
+
+        UserDetails userDetails = customUserDetailsService.loadUserByUsername(email);
+
+        String accessToken = jwtService.generateAccessToken(userDetails);
+
+        return AuthResponseDto.builder()
+                .accessToken(accessToken)
+                .username(user.getUsername())
+                .role(user.getRole().name().toLowerCase())
+                .message("Login successful")
+                .build();
+    }
+
     public void sendLoginOtp(
             OtpSendRequestDto otpSendRequestDto
     ){
@@ -92,7 +208,7 @@ public class AuthService {
         );
     }
 
-    public String loginWithOtp(
+    public AuthResponseDto loginWithOtp(
             OtpVerifyRequestDto otpVerifyRequestDto
     ){
 
@@ -111,17 +227,28 @@ public class AuthService {
 
         UserDetails userDetails = customUserDetailsService.loadUserByUsername(username);
 
-        return jwtService.generateAccessToken(userDetails);
+        String accessToken = jwtService.generateAccessToken(userDetails);
+
+        User user =
+                userRepository.findByUsername(username)
+                        .orElseThrow(UserNotFoundException::new);
+
+        return AuthResponseDto.builder()
+                .accessToken(accessToken)
+                .username(username)
+                .role(user.getRole().name().toLowerCase(Locale.ROOT))
+                .message("Login successful")
+                .build();
 
     }
 
     @Transactional
     public SignupResponseDto signup(
-            SignupRequestDto signupRequestDto
+            StandardSignupRequestDto dto
     ) {
         String username =
-                signupRequestDto
-                        .getUsername()
+                dto
+                        .getEmail()
                         .trim()
                         .toLowerCase();
 
@@ -135,9 +262,7 @@ public class AuthService {
         if(registeredUser != null){
             boolean verified = registeredUser.getVerified();
             if(verified){
-                throw new EmailAlreadyExistsException(
-                        "Email already registered"
-                );
+                throw new DuplicateResourceException("User already registered. Please log in.");
             }
             else{
                 otpService.requestOtp(
@@ -160,9 +285,9 @@ public class AuthService {
 
         User user = new User();
 
-        user.setUsername(signupRequestDto.getUsername());
+        user.setUsername(username);
 
-        String encodedPassword = passwordEncoder.encode(signupRequestDto.getPassword());
+        String encodedPassword = passwordEncoder.encode(dto.getPassword());
         user.setPassword(encodedPassword);
 
         user.setRole(Role.STUDENT);
@@ -175,13 +300,17 @@ public class AuthService {
 
         student.setUser(user);
 
-        student.setName(signupRequestDto.getName());
+        student.setName(dto.getName());
 
-        student.setRollNumber(signupRequestDto.getRollNo());
+        String rollNo = (dto.getRollNo() != null && !dto.getRollNo().isBlank())
+                ? dto.getRollNo()
+                : dto.getEmail().split("@")[0];
+
+        student.setRollNumber(rollNo);
 
         Hostel hostel =
                 hostelRepository
-                        .findById(signupRequestDto.getHostelId())
+                        .findById(dto.getHostelId())
                         .orElseThrow(() ->
                                 new ResourceNotFoundException("Hostel")
                         );
@@ -207,7 +336,7 @@ public class AuthService {
     }
 
     @Transactional
-    public SignupVerifyResponseDto verifySignup(
+    public AuthResponseDto verifySignup(
             SignupVerifyRequestDto signupVerifyRequestDto
     ){
 
@@ -234,14 +363,16 @@ public class AuthService {
         }
         registeredUser.setVerified(true);
 
-        SignupVerifyResponseDto signupVerifyResponseDto =
-                new SignupVerifyResponseDto();
+        UserDetails userDetails = customUserDetailsService.loadUserByUsername(identifier);
 
-        signupVerifyResponseDto.setIdentifier(identifier);
-        signupVerifyResponseDto.setMessage(
-                "User verified successfully"
-        );
-        return signupVerifyResponseDto;
+        String accessToken = jwtService.generateAccessToken(userDetails);
+
+        return AuthResponseDto.builder()
+                .accessToken(accessToken)
+                .username(registeredUser.getUsername())
+                .role(registeredUser.getRole().name().toLowerCase())
+                .message("Login successful")
+                .build();
     }
 
 }

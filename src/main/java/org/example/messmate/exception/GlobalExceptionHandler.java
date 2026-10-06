@@ -1,7 +1,6 @@
 package org.example.messmate.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
-import org.apache.coyote.BadRequestException;
 import org.example.messmate.dto.ApiExceptionDto;
 import org.example.messmate.dto.ValidationExceptionDto;
 import org.example.messmate.exception.otp.InvalidOtpException;
@@ -109,9 +108,10 @@ public class GlobalExceptionHandler {
                     HttpStatus.UNAUTHORIZED
                 );
     }
-    @ExceptionHandler(EmailAlreadyExistsException.class)
-    public ResponseEntity<ApiExceptionDto> handleEmailAlreadyExistsException(
-            EmailAlreadyExistsException ex,
+
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ApiExceptionDto> handleDuplicateResourceException(
+            DuplicateResourceException ex,
             HttpServletRequest request
     ){
         ApiExceptionDto apiExceptionDto = new ApiExceptionDto(

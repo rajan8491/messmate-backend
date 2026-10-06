@@ -12,6 +12,7 @@ import org.example.messmate.enums.Role;
 import org.example.messmate.exception.UserUnauthorizedException;
 import org.example.messmate.properties.JwtCookieProperties;
 import org.example.messmate.service.*;
+import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -24,8 +25,6 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Locale;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -69,82 +68,41 @@ public class AuthController {
         return ResponseEntity.ok(userResponseDto);
     }
 
-    @PostMapping("/signup")
-    public ResponseEntity<SignupResponseDto> signup(
-            @Valid @RequestBody SignupRequestDto signupRequestDto
+    @PostMapping("/google/verify")
+    public ResponseEntity<GoogleVerifyResponseDto> verifyGoogleToken(
+            @Valid @RequestBody GoogleVerifyRequestDto requestDto
     ) {
-
-        SignupResponseDto response = authService.signup(signupRequestDto);
-
-        return ResponseEntity.ok().body(response);
+        return ResponseEntity.ok(authService.verifyGoogleToken(requestDto.getToken()));
     }
 
-    @PostMapping("/signup/verify")
-    public ResponseEntity<SignupVerifyResponseDto> verifySignup(
-            @Valid @RequestBody SignupVerifyRequestDto signupVerifyRequestDto
-    ){
-        SignupVerifyResponseDto signupVerifyResponseDto =
-                authService.verifySignup(signupVerifyRequestDto);
+    @PostMapping("/google/complete-profile")
+    public ResponseEntity<AuthResponseDto> completeGoogleProfile(
+            @Valid @RequestBody CompleteGoogleProfileDto requestDto
+    ) {
+        AuthResponseDto response = authService.completeGoogleRegistration(requestDto);
 
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(signupVerifyResponseDto);
+        return getAuthResponseWithCookie(response);
     }
 
-    @PostMapping("/login/stateful")
-    public ResponseEntity<UserResponseDto> login(
-            @Valid @RequestBody LoginRequestDto loginRequestDto,
-            HttpServletRequest request,
-            HttpServletResponse response
-    ){
-
-        Authentication authentication = authService.authenticate(loginRequestDto);
-
-        //add authentication object to security context and save it to HttpSession(HttpSession is managed by
-        // servlet container)
-        SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(authentication);
-        SecurityContextHolder.setContext(context);
-
-        securityContextRepository.saveContext(
-                context,
-                request,
-                response
-        );
-
-        UserResponseDto userResponseDto = new UserResponseDto();
-
-        // add userid to loginResponse
-        userResponseDto.setUsername(authentication.getName());
-        userResponseDto.setRole(
-                Role.valueOf(authentication.getAuthorities()
-                        .iterator()
-                        .next()
-                        .getAuthority())
-        );
-
-        return ResponseEntity.ok(userResponseDto);
-    }
-
-    @PostMapping("/login")
-    public ResponseEntity<LoginResponseDto> login(
-            @Valid @RequestBody LoginRequestDto loginRequestDto
-    ){
-
-        String accessToken = authService.authenticateAndGetToken(loginRequestDto);
-
-        UserResponseDto userResponseDto = customUserDetailsService.getByUsername(
-                loginRequestDto.getUsername()
-        );
-
-        LoginResponseDto loginResponseDto = new LoginResponseDto();
-        loginResponseDto.setUser(userResponseDto);
-        loginResponseDto.setAccessToken(accessToken);
-
+    /**
+     * 3. Google Login (Strict)
+     * Throws 404 (ResourceNotFoundException) if user has not signed up.
+     */
+    @PostMapping("/google/login")
+    public ResponseEntity<AuthResponseDto> googleLogin(
+            @Valid @RequestBody GoogleVerifyRequestDto requestDto
+    ) {
+        AuthResponseDto authResponseDto = authService.loginWithGoogleStrict(requestDto.getToken());
         //add the refresh token to cookie
 
+        return getAuthResponseWithCookie(authResponseDto);
+    }
+
+    @NonNull
+    private ResponseEntity<AuthResponseDto> getAuthResponseWithCookie(AuthResponseDto authResponseDto) {
+        String username =  authResponseDto.getUsername();
         RefreshTokenService.TokenPairHolder tokenPairHolder =
-                refreshTokenService.createRefreshToken(loginRequestDto.getUsername());
+                refreshTokenService.createRefreshToken(username);
 
         ResponseCookie cookie =
                 ResponseCookie
@@ -174,7 +132,86 @@ public class AuthController {
                         HttpHeaders.SET_COOKIE,
                         cookie.toString()
                 )
-                .body(loginResponseDto);
+                .body(authResponseDto);
+    }
+
+    @PostMapping("/signup")
+    public ResponseEntity<SignupResponseDto> signup(
+            @Valid @RequestBody StandardSignupRequestDto requestDto
+    ) {
+
+        SignupResponseDto response = authService.signup(requestDto);
+
+        return ResponseEntity.ok().body(response);
+    }
+
+    @PostMapping("/signup/verify")
+    public ResponseEntity<AuthResponseDto> verifySignup(
+            @Valid @RequestBody SignupVerifyRequestDto signupVerifyRequestDto
+    ){
+        AuthResponseDto authResponseDto =
+                authService.verifySignup(signupVerifyRequestDto);
+
+        return getAuthResponseWithCookie(authResponseDto);
+    }
+
+//    @PostMapping("/login/stateful")
+//    public ResponseEntity<UserResponseDto> login(
+//            @Valid @RequestBody LoginRequestDto loginRequestDto,
+//            HttpServletRequest request,
+//            HttpServletResponse response
+//    ){
+//
+//        Authentication authentication = authService.authenticate(loginRequestDto);
+//
+//        //add authentication object to security context and save it to HttpSession(HttpSession is managed by
+//        // servlet container)
+//        SecurityContext context = SecurityContextHolder.createEmptyContext();
+//        context.setAuthentication(authentication);
+//        SecurityContextHolder.setContext(context);
+//
+//        securityContextRepository.saveContext(
+//                context,
+//                request,
+//                response
+//        );
+//
+//        UserResponseDto userResponseDto = new UserResponseDto();
+//
+//        // add userid to loginResponse
+//        userResponseDto.setUsername(authentication.getName());
+//        userResponseDto.setRole(
+//                Role.valueOf(authentication.getAuthorities()
+//                        .iterator()
+//                        .next()
+//                        .getAuthority())
+//        );
+//
+//        return ResponseEntity.ok(userResponseDto);
+//    }
+
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponseDto> login(
+            @Valid @RequestBody LoginRequestDto loginRequestDto
+    ){
+
+        String accessToken = authService.authenticateAndGetToken(loginRequestDto);
+
+        UserResponseDto userResponseDto = customUserDetailsService.getByUsername(
+                loginRequestDto.getUsername()
+        );
+
+        AuthResponseDto authResponseDto =
+                AuthResponseDto.builder()
+                        .accessToken(accessToken)
+                        .username(userResponseDto.getUsername())
+                        .role(userResponseDto.getRole().toString())
+                        .message("User login successful")
+                        .build();
+
+        //add the refresh token to cookie
+
+        return getAuthResponseWithCookie(authResponseDto);
     }
 
     @PostMapping("/login/send-otp")
@@ -190,60 +227,12 @@ public class AuthController {
     }
 
     @PostMapping("/login/verify-otp")
-    public ResponseEntity<LoginResponseDto> verifyOtp(
+    public ResponseEntity<AuthResponseDto> verifyOtp(
             @Valid @RequestBody OtpVerifyRequestDto otpVerifyRequestDto
     ){
-        String accessToken = authService.loginWithOtp(otpVerifyRequestDto);
+        AuthResponseDto authResponseDto = authService.loginWithOtp(otpVerifyRequestDto);
 
-        String identifier =
-                otpVerifyRequestDto
-                        .getIdentifier()
-                        .trim()
-                        .toLowerCase(Locale.ROOT);
-
-
-        UserResponseDto userResponseDto = customUserDetailsService.getByUsername(
-                identifier
-        );
-
-        LoginResponseDto loginResponseDto = new LoginResponseDto();
-        loginResponseDto.setUser(userResponseDto);
-        loginResponseDto.setAccessToken(accessToken);
-
-        //add the refresh token to cookie
-
-        RefreshTokenService.TokenPairHolder tokenPairHolder =
-                refreshTokenService.createRefreshToken(identifier);
-
-        ResponseCookie cookie =
-                ResponseCookie
-                        .from(
-                                jwtCookieProperties.name,
-                                tokenPairHolder.rawToken()
-                        )
-                        .httpOnly(
-                                jwtCookieProperties.httpOnly
-                        )
-                        .secure(
-                                jwtCookieProperties.secure
-                        )
-                        .path(
-                                jwtCookieProperties.path
-                        )
-                        .maxAge(
-                                jwtCookieProperties.maxAge
-                        )
-                        .sameSite(
-                                jwtCookieProperties.sameSite
-                        )
-                        .build();
-
-        return ResponseEntity.ok()
-                .header(
-                        HttpHeaders.SET_COOKIE,
-                        cookie.toString()
-                )
-                .body(loginResponseDto);
+        return getAuthResponseWithCookie(authResponseDto);
     }
 
     @PostMapping("/resend-otp")

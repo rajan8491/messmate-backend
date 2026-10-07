@@ -1,14 +1,11 @@
 package org.example.messmate.controller;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.example.messmate.dto.auth.*;
 import org.example.messmate.dto.otpDto.OtpResendRequestDto;
 import org.example.messmate.dto.otpDto.OtpSendRequestDto;
 import org.example.messmate.dto.otpDto.OtpSendResponseDto;
 import org.example.messmate.dto.otpDto.OtpVerifyRequestDto;
-import org.example.messmate.enums.Role;
 import org.example.messmate.exception.UserUnauthorizedException;
 import org.example.messmate.properties.JwtCookieProperties;
 import org.example.messmate.service.*;
@@ -18,8 +15,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
@@ -29,10 +24,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
-    private final SecurityContextRepository securityContextRepository = new HttpSessionSecurityContextRepository();
-
     private final JwtCookieProperties jwtCookieProperties;
-
     private final AuthService authService;
     private final RefreshTokenService refreshTokenService;
     private final OtpService otpService;
@@ -72,16 +64,36 @@ public class AuthController {
     public ResponseEntity<GoogleVerifyResponseDto> verifyGoogleToken(
             @Valid @RequestBody GoogleVerifyRequestDto requestDto
     ) {
-        return ResponseEntity.ok(authService.verifyGoogleToken(requestDto.getToken()));
+        var googleVerifyResponseDto = authService.verifyGoogleToken(requestDto.getToken());
+
+        if(googleVerifyResponseDto.isNewUser()){
+            return ResponseEntity.ok(googleVerifyResponseDto);
+        }
+
+        ResponseCookie cookie =
+                getRefreshTokenCookie(googleVerifyResponseDto.getUsername());
+        return ResponseEntity.ok()
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        cookie.toString()
+                )
+                .body(googleVerifyResponseDto);
     }
 
     @PostMapping("/google/complete-profile")
     public ResponseEntity<AuthResponseDto> completeGoogleProfile(
             @Valid @RequestBody CompleteGoogleProfileDto requestDto
     ) {
-        AuthResponseDto response = authService.completeGoogleRegistration(requestDto);
+        AuthResponseDto authResponseDto = authService.completeGoogleRegistration(requestDto);
 
-        return getAuthResponseWithCookie(response);
+        ResponseCookie cookie = getRefreshTokenCookie(authResponseDto.getUsername());
+
+        return ResponseEntity.ok()
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        cookie.toString()
+                )
+                .body(authResponseDto);
     }
 
     /**
@@ -95,37 +107,7 @@ public class AuthController {
         AuthResponseDto authResponseDto = authService.loginWithGoogleStrict(requestDto.getToken());
         //add the refresh token to cookie
 
-        return getAuthResponseWithCookie(authResponseDto);
-    }
-
-    @NonNull
-    private ResponseEntity<AuthResponseDto> getAuthResponseWithCookie(AuthResponseDto authResponseDto) {
-        String username =  authResponseDto.getUsername();
-        RefreshTokenService.TokenPairHolder tokenPairHolder =
-                refreshTokenService.createRefreshToken(username);
-
-        ResponseCookie cookie =
-                ResponseCookie
-                        .from(
-                                jwtCookieProperties.name,
-                                tokenPairHolder.rawToken()
-                        )
-                        .httpOnly(
-                                jwtCookieProperties.httpOnly
-                        )
-                        .secure(
-                                jwtCookieProperties.secure
-                        )
-                        .path(
-                                jwtCookieProperties.path
-                        )
-                        .maxAge(
-                                jwtCookieProperties.maxAge
-                        )
-                        .sameSite(
-                                jwtCookieProperties.sameSite
-                        )
-                        .build();
+        ResponseCookie cookie = getRefreshTokenCookie(authResponseDto.getUsername());
 
         return ResponseEntity.ok()
                 .header(
@@ -133,6 +115,34 @@ public class AuthController {
                         cookie.toString()
                 )
                 .body(authResponseDto);
+    }
+
+    @NonNull
+    private ResponseCookie getRefreshTokenCookie(String username) {
+        RefreshTokenService.TokenPairHolder tokenPairHolder =
+                refreshTokenService.createRefreshToken(username);
+
+        return ResponseCookie
+                .from(
+                        jwtCookieProperties.name,
+                        tokenPairHolder.rawToken()
+                )
+                .httpOnly(
+                        jwtCookieProperties.httpOnly
+                )
+                .secure(
+                        jwtCookieProperties.secure
+                )
+                .path(
+                        jwtCookieProperties.path
+                )
+                .maxAge(
+                        jwtCookieProperties.maxAge
+                )
+                .sameSite(
+                        jwtCookieProperties.sameSite
+                )
+                .build();
     }
 
     @PostMapping("/signup")
@@ -152,43 +162,15 @@ public class AuthController {
         AuthResponseDto authResponseDto =
                 authService.verifySignup(signupVerifyRequestDto);
 
-        return getAuthResponseWithCookie(authResponseDto);
-    }
+        ResponseCookie cookie = getRefreshTokenCookie(authResponseDto.getUsername());
 
-//    @PostMapping("/login/stateful")
-//    public ResponseEntity<UserResponseDto> login(
-//            @Valid @RequestBody LoginRequestDto loginRequestDto,
-//            HttpServletRequest request,
-//            HttpServletResponse response
-//    ){
-//
-//        Authentication authentication = authService.authenticate(loginRequestDto);
-//
-//        //add authentication object to security context and save it to HttpSession(HttpSession is managed by
-//        // servlet container)
-//        SecurityContext context = SecurityContextHolder.createEmptyContext();
-//        context.setAuthentication(authentication);
-//        SecurityContextHolder.setContext(context);
-//
-//        securityContextRepository.saveContext(
-//                context,
-//                request,
-//                response
-//        );
-//
-//        UserResponseDto userResponseDto = new UserResponseDto();
-//
-//        // add userid to loginResponse
-//        userResponseDto.setUsername(authentication.getName());
-//        userResponseDto.setRole(
-//                Role.valueOf(authentication.getAuthorities()
-//                        .iterator()
-//                        .next()
-//                        .getAuthority())
-//        );
-//
-//        return ResponseEntity.ok(userResponseDto);
-//    }
+        return ResponseEntity.ok()
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        cookie.toString()
+                )
+                .body(authResponseDto);
+    }
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponseDto> login(
@@ -211,7 +193,14 @@ public class AuthController {
 
         //add the refresh token to cookie
 
-        return getAuthResponseWithCookie(authResponseDto);
+        ResponseCookie cookie = getRefreshTokenCookie(authResponseDto.getUsername());
+
+        return ResponseEntity.ok()
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        cookie.toString()
+                )
+                .body(authResponseDto);
     }
 
     @PostMapping("/login/send-otp")
@@ -232,7 +221,14 @@ public class AuthController {
     ){
         AuthResponseDto authResponseDto = authService.loginWithOtp(otpVerifyRequestDto);
 
-        return getAuthResponseWithCookie(authResponseDto);
+        ResponseCookie cookie = getRefreshTokenCookie(authResponseDto.getUsername());
+
+        return ResponseEntity.ok()
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        cookie.toString()
+                )
+                .body(authResponseDto);
     }
 
     @PostMapping("/resend-otp")
